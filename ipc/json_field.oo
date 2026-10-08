@@ -1,0 +1,135 @@
+// # JSON Field Extractor and Protocol Utility
+//
+// Logline: Decodes parameters and escapes string payloads for JSON-RPC 2.0 frames.
+//
+// Setup: Pure string scanning algorithms without external JSON library dependencies.
+//
+// Beats:
+//   1. Search JSON object payloads for named property string keys.
+//   2. Extract unquoted string values handling basic backslash escape sequences.
+//   3. Extract signed 64-bit integer values with fallback defaults.
+//   4. Format arbitrary string payloads with RFC 8259 character escaping.
+
+pub fn json_str_escape(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(s, i);
+        if b == 34 { out = out + "\\\""; }
+        else if b == 92 { out = out + "\\\\"; }
+        else if b == 10 { out = out + "\\n"; }
+        else if b == 9 { out = out + "\\t"; }
+        else if b == 13 { out = out + "\\r"; }
+        else { out = out + char_at(s, i); }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn json_extract_str_field(json: String, key: String) -> String {
+    let pat: String = "\"" + key + "\"";
+    let pat_len: Int = chars_len(pat);
+    let j_len: Int = chars_len(json);
+
+    let mut i: Int = 0;
+    let mut key_pos: Int = -1;
+    while i + pat_len <= j_len {
+        if str_slice(json, i, i + pat_len) == pat {
+            key_pos = i;
+            i = j_len; // break
+        }
+        i = i + 1;
+    }
+
+    if key_pos < 0 { return ""; }
+
+    let mut idx: Int = key_pos + pat_len;
+    while idx < j_len && (char_at(json, idx) == " " || char_at(json, idx) == ":" || char_at(json, idx) == "\t") {
+        idx = idx + 1;
+    }
+
+    if idx >= j_len || char_at(json, idx) != "\"" {
+        return "";
+    }
+    idx = idx + 1;
+
+    let mut val: String = "";
+    let mut escaped: Bool = false;
+    while idx < j_len {
+        let c: String = char_at(json, idx);
+        if escaped {
+            if c == "n" { val = val + "\n"; }
+            else if c == "t" { val = val + "\t"; }
+            else if c == "r" { val = val + "\r"; }
+            else if c == "\"" { val = val + "\""; }
+            else if c == "\\" { val = val + "\\"; }
+            else { val = val + c; }
+            escaped = false;
+        } else if c == "\\" {
+            escaped = true;
+        } else if c == "\"" {
+            return val;
+        } else {
+            val = val + c;
+        }
+        idx = idx + 1;
+    }
+
+    return val;
+}
+
+pub fn json_extract_int_field(json: String, key: String, default_val: Int) -> Int {
+    let pat: String = "\"" + key + "\"";
+    let pat_len: Int = chars_len(pat);
+    let j_len: Int = chars_len(json);
+
+    let mut i: Int = 0;
+    let mut key_pos: Int = -1;
+    while i + pat_len <= j_len {
+        if str_slice(json, i, i + pat_len) == pat {
+            key_pos = i;
+            i = j_len; // break
+        }
+        i = i + 1;
+    }
+
+    if key_pos < 0 { return default_val; }
+
+    let mut idx: Int = key_pos + pat_len;
+    while idx < j_len && (char_at(json, idx) == " " || char_at(json, idx) == ":" || char_at(json, idx) == "\t") {
+        idx = idx + 1;
+    }
+
+    let mut sign: Int = 1;
+    if idx < j_len && char_at(json, idx) == "-" {
+        sign = -1;
+        idx = idx + 1;
+    }
+
+    let mut num_str: String = "";
+    while idx < j_len {
+        let b: Int = byte_at(json, idx);
+        if b >= 48 && b <= 57 {
+            num_str = num_str + char_at(json, idx);
+        } else {
+            idx = j_len; // break
+        }
+        idx = idx + 1;
+    }
+
+    if chars_len(num_str) == 0 {
+        return default_val;
+    }
+
+    let mut result: Int = 0;
+    let mut k: Int = 0;
+    let n_len: Int = chars_len(num_str);
+    while k < n_len {
+        let digit: Int = byte_at(num_str, k) - 48;
+        result = result * 10 + digit;
+        k = k + 1;
+    }
+
+    return result * sign;
+}

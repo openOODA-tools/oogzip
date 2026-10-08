@@ -5,48 +5,201 @@
 // Setup: Demands explicit capability tokens and standard argument list.
 //
 // Beats:
-//   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oogzip operations.
-//   3. Format and output structured results to standard output.
+//   1. Parse command-line options and dispatch --help, --version, --test, --demo, or --mcp.
+//   2. Execute archive metadata inspection or integrity validation.
+//   3. Compress or decompress filesystem targets and standard input streams.
+//   4. Format and stream terminal reports, raw archives, or structured JSON telemetry.
 
-fn render_help() -> String {
-    return "oogzip 0.1.0 (openOODA sovereign files & navigation)\n"
-        + "usage: oogzip [options] [ARGUMENTS]...\n\n"
-        + "High-speed multi-threaded DEFLATE compression engine with stream headers.\n\n"
-        + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
+import "core/gzip_types.oo";
+import "core/gzip_container.oo";
+import "core/archive_inspector.oo";
+import "render/render_table.oo";
+import "render/render_json.oo";
+import "render/render_demo.oo";
+import "ipc/cli_options.oo";
+import "ipc/mcp_server.oo";
+import "anchor.oo";
+
+fn run_all_tests() -> Bool {
+    return verify_root_subsystem();
 }
 
-fn render_version() -> String {
-    return "oogzip 0.1.0 (openOODA sovereign files & navigation)\n";
-}
-
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
+fn get_file_basename(path: String) -> String {
+    let n: Int = chars_len(path);
+    let mut last_slash: Int = -1;
     let mut i: Int = 0;
-
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oogzip\"}}\n");
-            return 0;
+    while i < n {
+        if char_at(path, i) == "/" {
+            last_slash = i;
         }
         i = i + 1;
     }
+    if last_slash >= 0 {
+        return str_slice(path, last_slash + 1, n);
+    }
+    return path;
+}
 
-    print("oogzip: sovereign capability-bounded utility ready\n");
+pub fn main(
+    fr: &FsReadCap,
+    fw: &FsWriteCap,
+    _pr: &ProcessCap,
+    _env: &EnvCap,
+    args: List[String]
+) -> Int {
+    let opts: CliOptions = parse_cli_options(args);
+
+    if opts.show_help {
+        print(render_cli_help());
+        return 0;
+    }
+    if opts.show_version {
+        print(render_cli_version());
+        return 0;
+    }
+    if opts.run_test {
+        if run_all_tests() {
+            print("oogzip: internal anchor tests PASSED\n");
+            return 0;
+        } else {
+            print("oogzip: internal anchor tests FAILED\n");
+            return 1;
+        }
+    }
+    if opts.show_mcp {
+        return run_mcp_server(fr);
+    }
+    if opts.show_demo {
+        print(render_gzip_demo(opts.use_color));
+        return 0;
+    }
+
+    let n_files: Int = list_len(opts.files);
+
+    // List mode (-l, --list)
+    if opts.compress_opts.list_only {
+        if n_files == 0 {
+            print("oogzip: missing archive file operand for --list\n");
+            return 2;
+        }
+        let mut items: List[GzipMetadata] = list_new();
+        let mut fi: Int = 0;
+        while fi < n_files {
+            let p: String = list_get(opts.files, fi);
+            let r: Result[String, String] = read_file(fr, p);
+            if r.is_ok() {
+                let raw: String = match r { Ok(s) => s, Err(_) => "" };
+                let meta: GzipMetadata = inspect_gzip_stream(raw, p);
+                items = list_push(items, meta);
+            } else {
+                let err_meta: GzipMetadata = make_gzip_metadata(p, "", 0, 0, 0, "--------", 0, false, "No such file or directory");
+                items = list_push(items, err_meta);
+            }
+            fi = fi + 1;
+        }
+
+        if opts.json_output {
+            print(metadata_list_to_json(items) + "\n");
+        } else {
+            print(render_archive_table(items, opts.use_color));
+        }
+        return 0;
+    }
+
+    // Test mode (-t)
+    if opts.compress_opts.test_only {
+        if n_files == 0 {
+            print("oogzip: missing archive file operand for -t\n");
+            return 2;
+        }
+        let mut all_ok: Bool = true;
+        let mut ti: Int = 0;
+        while ti < n_files {
+            let p: String = list_get(opts.files, ti);
+            let r: Result[String, String] = read_file(fr, p);
+            if r.is_ok() {
+                let raw: String = match r { Ok(s) => s, Err(_) => "" };
+                let decomp_res: Result[String, String] = decompress_gzip_container(raw);
+                let ok: Bool = decomp_res.is_ok();
+                let err_msg: String = if ok { "" } else { match decomp_res { Ok(_) => "", Err(e) => e } };
+                print(render_test_result(p, ok, err_msg, opts.use_color));
+                if !ok { all_ok = false; }
+            } else {
+                print(render_test_result(p, false, "No such file or directory", opts.use_color));
+                all_ok = false;
+            }
+            ti = ti + 1;
+        }
+        return if all_ok { 0 } else { 1 };
+    }
+
+    // Decompress mode (-d)
+    if opts.compress_opts.decompress {
+        if n_files == 0 {
+            print("oogzip: missing archive file operand for --decompress\n");
+            return 2;
+        }
+        let mut di: Int = 0;
+        while di < n_files {
+            let p: String = list_get(opts.files, di);
+            let r: Result[String, String] = read_file(fr, p);
+            if r.is_ok() {
+                let raw: String = match r { Ok(s) => s, Err(_) => "" };
+                let decomp_res: Result[String, String] = decompress_gzip_container(raw);
+                if decomp_res.is_ok() {
+                    let uncomp: String = match decomp_res { Ok(s) => s, Err(_) => "" };
+                    if opts.compress_opts.to_stdout {
+                        print(uncomp);
+                    } else {
+                        let out_path: String = if str_ends_with(p, ".gz") {
+                            str_slice(p, 0, chars_len(p) - 3)
+                        } else {
+                            p + ".out"
+                        };
+                        let _ = write_file(fw, out_path, uncomp);
+                    }
+                } else {
+                    let err_msg: String = match decomp_res { Ok(_) => "", Err(e) => e };
+                    print("oogzip: " + p + ": " + err_msg + "\n");
+                    return 1;
+                }
+            } else {
+                print("oogzip: " + p + ": No such file or directory\n");
+                return 1;
+            }
+            di = di + 1;
+        }
+        return 0;
+    }
+
+    // Default Compress mode
+    if n_files == 0 {
+        print("oogzip: missing file operand (try --help or --demo)\n");
+        return 2;
+    }
+
+    let mut ci: Int = 0;
+    while ci < n_files {
+        let p: String = list_get(opts.files, ci);
+        let r: Result[String, String] = read_file(fr, p);
+        if r.is_ok() {
+            let content: String = match r { Ok(s) => s, Err(_) => "" };
+            let bname: String = get_file_basename(p);
+            let comp_bytes: List[Int] = compress_to_gzip(content, bname, opts.compress_opts.level);
+            let comp_str: String = bytes_to_str(comp_bytes);
+
+            if opts.compress_opts.to_stdout {
+                print(comp_str);
+            } else {
+                let out_path: String = p + ".gz";
+                let _ = write_file(fw, out_path, comp_str);
+            }
+        } else {
+            print("oogzip: " + p + ": No such file or directory\n");
+            return 1;
+        }
+        ci = ci + 1;
+    }
+
     return 0;
 }

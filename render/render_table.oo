@@ -1,0 +1,119 @@
+// # Gzip Archive Table Formatter
+//
+// Logline: Formats archive inspection metadata into GNU/POSIX conformant terminal tables.
+//
+// Setup: Pure terminal text formatter with optional ANSI theme highlights.
+//
+// Beats:
+//   1. Build ANSI color formatting sequences for status badges and column headers.
+//   2. Format single archive metadata rows with compressed, uncompressed, and ratio figures.
+//   3. Render multi-file archive inspection tables with totals summary.
+//   4. Format integrity test reporting lines for -t and --test modes.
+
+import "core/gzip_types.oo";
+
+fn ansi_esc() -> String {
+    return bytes_to_str(bytes_push(bytes_new(), 27));
+}
+
+fn color_cyan(s: String, use_color: Bool) -> String {
+    if !use_color { return s; }
+    return ansi_esc() + "[36m" + s + ansi_esc() + "[0m";
+}
+
+fn color_green(s: String, use_color: Bool) -> String {
+    if !use_color { return s; }
+    return ansi_esc() + "[32m" + s + ansi_esc() + "[0m";
+}
+
+fn color_yellow(s: String, use_color: Bool) -> String {
+    if !use_color { return s; }
+    return ansi_esc() + "[33m" + s + ansi_esc() + "[0m";
+}
+
+fn color_red(s: String, use_color: Bool) -> String {
+    if !use_color { return s; }
+    return ansi_esc() + "[1;31m" + s + ansi_esc() + "[0m";
+}
+
+fn pad_right(s: String, width: Int) -> String {
+    let mut out: String = s;
+    while chars_len(out) < width {
+        out = out + " ";
+    }
+    return out;
+}
+
+fn pad_left(s: String, width: Int) -> String {
+    let mut out: String = s;
+    while chars_len(out) < width {
+        out = " " + out;
+    }
+    return out;
+}
+
+pub fn render_archive_row(meta: GzipMetadata, use_color: Bool) -> String {
+    if !meta.valid {
+        return pad_left("----", 12) + " "
+            + pad_left("----", 14) + " "
+            + pad_left("----", 7) + " "
+            + color_red(meta.file_path + " (" + meta.error_msg + ")", use_color) + "\n";
+    }
+
+    let c_str: String = pad_left(meta.compressed_size.to_string(), 12);
+    let u_str: String = pad_left(meta.uncompressed_size.to_string(), 14);
+    let r_str: String = pad_left(meta.ratio_pct.to_string() + "%", 7);
+    let name_str: String = color_green(meta.orig_filename, use_color);
+
+    return c_str + " " + u_str + " " + r_str + " " + name_str + "\n";
+}
+
+pub fn render_archive_table(items: List[GzipMetadata], use_color: Bool) -> String {
+    let mut out: String = "";
+    let hdr: String = pad_left("compressed", 12) + " "
+        + pad_left("uncompressed", 14) + " "
+        + pad_left("ratio", 7) + " "
+        + "uncompressed_name\n";
+    out = out + color_cyan(hdr, use_color);
+
+    let n: Int = list_len(items);
+    let mut total_c: Int = 0;
+    let mut total_u: Int = 0;
+
+    let mut i: Int = 0;
+    while i < n {
+        let meta: GzipMetadata = list_get(items, i);
+        out = out + render_archive_row(meta, use_color);
+        if meta.valid {
+            total_c = total_c + meta.compressed_size;
+            total_u = total_u + meta.uncompressed_size;
+        }
+        i = i + 1;
+    }
+
+    if n > 1 {
+        let total_ratio: Int = if total_u > 0 {
+            let sav: Int = total_u - total_c;
+            if sav > 0 { (sav * 100) / total_u } else { 0 }
+        } else {
+            0
+        };
+        let sep: String = "------------ -------------- ------- ------------------\n";
+        out = out + sep;
+        let tot_row: String = pad_left(total_c.to_string(), 12) + " "
+            + pad_left(total_u.to_string(), 14) + " "
+            + pad_left(total_ratio.to_string() + "%", 7) + " "
+            + "(totals)\n";
+        out = out + color_yellow(tot_row, use_color);
+    }
+
+    return out;
+}
+
+pub fn render_test_result(path: String, ok: Bool, err_msg: String, use_color: Bool) -> String {
+    if ok {
+        return path + ": " + color_green("OK", use_color) + "\n";
+    } else {
+        return path + ": " + color_red("FAILED (" + err_msg + ")", use_color) + "\n";
+    }
+}

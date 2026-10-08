@@ -1,0 +1,69 @@
+// # RFC 8259 JSON Telemetry Serializer
+//
+// Logline: Serializes archive metadata, inspection records, and compression results into JSON.
+//
+// Setup: Pure JSON string encoder without external libraries.
+//
+// Beats:
+//   1. Implement RFC 8259 character escaping for string values.
+//   2. Serialize single GzipMetadata records with size and CRC telemetry.
+//   3. Serialize list of archive inspection records for multi-file payloads.
+//   4. Format compression and decompression operation results.
+
+import "core/gzip_types.oo";
+
+fn json_str_escape_basic(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(s, i);
+        if b == 34 { out = out + "\\\""; }
+        else if b == 92 { out = out + "\\\\"; }
+        else if b == 10 { out = out + "\\n"; }
+        else if b == 9 { out = out + "\\t"; }
+        else if b == 13 { out = out + "\\r"; }
+        else { out = out + char_at(s, i); }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn metadata_to_json(meta: GzipMetadata) -> String {
+    return "{\"file_path\":\"" + json_str_escape_basic(meta.file_path) + "\""
+        + ",\"orig_filename\":\"" + json_str_escape_basic(meta.orig_filename) + "\""
+        + ",\"compressed_size\":" + meta.compressed_size.to_string()
+        + ",\"uncompressed_size\":" + meta.uncompressed_size.to_string()
+        + ",\"ratio_pct\":" + meta.ratio_pct.to_string()
+        + ",\"crc32_hex\":\"" + meta.crc32_hex + "\""
+        + ",\"mtime\":" + meta.mtime.to_string()
+        + ",\"valid\":" + (if meta.valid { "true" } else { "false" })
+        + ",\"error_msg\":\"" + json_str_escape_basic(meta.error_msg) + "\"}";
+}
+
+pub fn metadata_list_to_json(items: List[GzipMetadata]) -> String {
+    let mut out: String = "{\"total_archives\":" + list_len(items).to_string() + ",\"archives\":[";
+    let n: Int = list_len(items);
+    let mut i: Int = 0;
+    while i < n {
+        if i > 0 { out = out + ","; }
+        out = out + metadata_to_json(list_get(items, i));
+        i = i + 1;
+    }
+    out = out + "]}";
+    return out;
+}
+
+pub fn compression_result_to_json(
+    path: String,
+    orig_size: Int,
+    comp_size: Int,
+    ratio_pct: Int,
+    crc_hex: String
+) -> String {
+    return "{\"file_path\":\"" + json_str_escape_basic(path) + "\""
+        + ",\"original_size\":" + orig_size.to_string()
+        + ",\"compressed_size\":" + comp_size.to_string()
+        + ",\"ratio_pct\":" + ratio_pct.to_string()
+        + ",\"crc32_hex\":\"" + crc_hex + "\"}";
+}

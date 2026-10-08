@@ -4,7 +4,7 @@
 # "Removes oogzip binary, package installations, and cache."
 #
 # Usage:
-#   curl -fsSL https://openooda-toogzip.github.io/oogzip/uninstall.sh | bash
+#   curl -fsSL https://openooda-tools.github.io/oogzip/uninstall.sh | bash
 #   or: ./uninstall.sh [options]
 #
 # Options:

@@ -1,0 +1,114 @@
+// # Archive Inspection and Metadata Engine
+//
+// Logline: Parses gzip stream headers, compression ratios, and trailer descriptors.
+//
+// Setup: Pure header analyzer without full payload inflation.
+//
+// Beats:
+//   1. Inspect RFC 1952 header fields for magic signatures and flag attributes.
+//   2. Extract original filename and modification timestamp metadata.
+//   3. Read trailer CRC-32 and uncompressed ISIZE descriptors.
+//   4. Calculate compression savings ratios and validate archive format integrity.
+
+import "gzip_types.oo";
+import "crc32_engine.oo";
+
+pub fn inspect_gzip_stream(raw: String, file_path: String) -> GzipMetadata {
+    let raw_len: Int = bytes_len(raw);
+    if raw_len < 18 {
+        return make_gzip_metadata(
+            file_path,
+            "",
+            raw_len,
+            0,
+            0,
+            "--------",
+            0,
+            false,
+            "File too small to be a valid gzip archive"
+        );
+    }
+
+    let id1: Int = byte_at(raw, 0);
+    let id2: Int = byte_at(raw, 1);
+    if id1 != 31 || id2 != 139 {
+        return make_gzip_metadata(
+            file_path,
+            "",
+            raw_len,
+            0,
+            0,
+            "--------",
+            0,
+            false,
+            "Not in gzip format: invalid magic header"
+        );
+    }
+
+    let cm: Int = byte_at(raw, 2);
+    if cm != 8 {
+        return make_gzip_metadata(
+            file_path,
+            "",
+            raw_len,
+            0,
+            0,
+            "--------",
+            0,
+            false,
+            "Unsupported compression method: " + cm.to_string()
+        );
+    }
+
+    let flg: Int = byte_at(raw, 3);
+    let mtime: Int = read_le32_from_str(raw, 4);
+    let mut pos: Int = 10;
+    let mut fname: String = "";
+
+    // FEXTRA
+    if (flg & 4) != 0 {
+        if pos + 2 <= raw_len {
+            let xlen: Int = (byte_at(raw, pos) & 255) | ((byte_at(raw, pos + 1) & 255) << 8);
+            pos = pos + 2 + xlen;
+        }
+    }
+
+    // FNAME
+    if (flg & 8) != 0 {
+        let mut fn_bytes: List[Int] = bytes_new();
+        while pos < raw_len && byte_at(raw, pos) != 0 {
+            fn_bytes = bytes_push(fn_bytes, byte_at(raw, pos));
+            pos = pos + 1;
+        }
+        fname = bytes_to_str(fn_bytes);
+        pos = pos + 1; // skip null
+    }
+
+    let trailer_crc: Int = read_le32_from_str(raw, raw_len - 8);
+    let trailer_isize: Int = read_le32_from_str(raw, raw_len - 4);
+
+    let crc_hex: String = crc32_to_hex_str(trailer_crc);
+
+    let ratio_pct: Int = if trailer_isize > 0 {
+        let savings: Int = trailer_isize - raw_len;
+        if savings > 0 {
+            (savings * 100) / trailer_isize
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    return make_gzip_metadata(
+        file_path,
+        if chars_len(fname) > 0 { fname } else { file_path },
+        raw_len,
+        trailer_isize,
+        ratio_pct,
+        crc_hex,
+        mtime,
+        true,
+        ""
+    );
+}

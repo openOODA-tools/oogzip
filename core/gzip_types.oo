@@ -1,0 +1,109 @@
+// # Gzip Data Types and Protocol Models
+//
+// Logline: Defines core data structures for RFC 1952 gzip containers, deflate streams, and metrics.
+//
+// Setup: Pure data models without external system dependencies.
+//
+// Beats:
+//   1. Declare GzipHeader and GzipTrailer container descriptors.
+//   2. Declare GzipMetadata for archive inspection and ratio metrics.
+//   3. Declare GzipCompressOptions for CLI configuration.
+//   4. Provide pure constructor helpers for all gzip data models.
+
+pub type GzipHeader = struct {
+    magic1: Int,
+    magic2: Int,
+    method: Int,
+    flags: Int,
+    mtime: Int,
+    extra_flags: Int,
+    os_id: Int,
+    filename: String,
+    comment: String
+};
+
+pub type GzipTrailer = struct {
+    crc32: Int,
+    isize: Int
+};
+
+pub type GzipMetadata = struct {
+    file_path: String,
+    orig_filename: String,
+    compressed_size: Int,
+    uncompressed_size: Int,
+    ratio_pct: Int,
+    crc32_hex: String,
+    mtime: Int,
+    valid: Bool,
+    error_msg: String
+};
+
+pub type GzipCompressOptions = struct {
+    level: Int,
+    include_filename: Bool,
+    filename: String,
+    keep_file: Bool,
+    to_stdout: Bool,
+    force_overwrite: Bool,
+    test_only: Bool,
+    list_only: Bool,
+    decompress: Bool
+};
+
+pub fn make_gzip_header(
+    flags: Int,
+    mtime: Int,
+    extra_flags: Int,
+    filename: String
+) -> GzipHeader {
+    return GzipHeader {
+        magic1: 31,  // 0x1f
+        magic2: 139, // 0x8b
+        method: 8,   // DEFLATE
+        flags: flags,
+        mtime: mtime,
+        extra_flags: extra_flags,
+        os_id: 3,    // Unix
+        filename: filename,
+        comment: ""
+    };
+}
+
+pub fn make_gzip_metadata(
+    path: String,
+    fname: String,
+    c_size: Int,
+    u_size: Int,
+    ratio: Int,
+    crc_hex: String,
+    mtime: Int,
+    valid: Bool,
+    err: String
+) -> GzipMetadata {
+    return GzipMetadata {
+        file_path: path,
+        orig_filename: fname,
+        compressed_size: c_size,
+        uncompressed_size: u_size,
+        ratio_pct: ratio,
+        crc32_hex: crc_hex,
+        mtime: mtime,
+        valid: valid,
+        error_msg: err
+    };
+}
+
+pub fn default_compress_options() -> GzipCompressOptions {
+    return GzipCompressOptions {
+        level: 6,
+        include_filename: false,
+        filename: "",
+        keep_file: false,
+        to_stdout: false,
+        force_overwrite: false,
+        test_only: false,
+        list_only: false,
+        decompress: false
+    };
+}

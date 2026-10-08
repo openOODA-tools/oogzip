@@ -1,22 +1,22 @@
-# oogzip: Sovereign DEFLATE COMPRESS
+# oogzip: Sovereign DEFLATE Compression Engine & RFC 1952 Container
 
 <div align="center">
 
 ```
 ================================================================================
                                 oogzip
-               Sovereign openOODA DEFLATE COMPRESS
+            Sovereign openOODA DEFLATE COMPRESSION ENGINE
 ================================================================================
 ```
 
-**Sovereign DEFLATE COMPRESS**  
-*High-speed multi-threaded DEFLATE compression engine with stream headers.*  
-*Two Faces, One Engine:* Modern terminal ergonomics for humans • Zero-leakage MCP for AI agents  
+**Sovereign DEFLATE COMPRESSION ENGINE & RFC 1952 CONTAINER**  
+*High-speed capability-bounded DEFLATE compression engine with stream headers.*  
+*Two Faces, One Engine:* Modern terminal ergonomics for humans • Zero-leakage streaming MCP for AI agents  
 Written in 100% pure [openOODA](https://github.com/openOODA).
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![openOODA](https://img.shields.io/badge/openOODA-1.0-emerald.svg)](https://openooda.org)
-[![Architecture: x86_64 | aarch64](https://img.shields.io/badge/Arch-x86__64%20%7C%20aarch64-lightgrey.svg)]()
+[![Architecture: x86_64](https://img.shields.io/badge/Arch-x86__64-lightgrey.svg)]()
 
 </div>
 
@@ -24,7 +24,7 @@ Written in 100% pure [openOODA](https://github.com/openOODA).
 
 ## 1. Quick Install
 
-### Automated Installer (Linux x86_64 & aarch64)
+### Automated Installer (Linux x86_64)
 ```bash
 curl -fsSL https://openooda-tools.github.io/oogzip/install.sh | bash
 ```
@@ -51,50 +51,78 @@ oogzip-uninstall
 
 ---
 
-## 2. CLI Usage
+## 2. CLI Usage & Flags
 
 ```
-usage: oogzip [options] [ARGUMENTS]...
+oogzip 0.2.0 (openOODA sovereign DEFLATE compression engine)
+usage: oogzip [options] [FILE]...
 
-High-speed multi-threaded DEFLATE compression engine with stream headers.
+Compress or decompress files and streams in RFC 1952 gzip format.
 
 Options:
-  -h, --help           display this help and exit
-  -v, --version        output version information and exit
-      --json           output formatted as JSON Lines
-      --color <WHEN>   colorize output: auto, always, never [default: auto]
-      --theme <NAME>   override active oote palette
-      --mcp            run as Model Context Protocol stdio server
+  -c, --stdout       write on standard output, keep original files unchanged
+  -d, --decompress   decompress archive files
+  -k, --keep         keep (don't delete) input files during operation
+  -f, --force        force overwrite of output files
+  -t, --test         test compressed archive integrity and verify CRC-32
+  -l, --list         list compressed and uncompressed sizes and ratio
+  -1, --fast         compress faster (level 1)
+  -9, --best         compress better (level 9)
+  -j, --json         output archive metadata and metrics as JSON
+  -D, --demo         interactive compression and container dissection showcase
+      --no-color     suppress ANSI color escape sequences
+      --test         execute internal multi-tier verification suite
+      --mcp          run as Model Context Protocol stdio server
+  -h, --help         display this help and exit
+  -v, --version      output version information and exit
+```
+
+### Examples
+```bash
+# Compress a file into RFC 1952 container (generates file.txt.gz)
+oogzip file.txt
+
+# Decompress an archive to standard output
+oogzip -d -c file.txt.gz
+
+# Inspect compression ratios and metadata
+oogzip -l *.gz
+
+# Validate CRC-32 and uncompressed ISIZE integrity
+oogzip -t file.txt.gz
+
+# Interactive multi-stage demonstration showcase
+oogzip -D
 ```
 
 ---
 
-## 3. Theming Integration (`oote`)
+## 3. Model Context Protocol (MCP)
 
-`oogzip` synchronizes visual styles and status colors with [oote](https://github.com/openOODA-tools/oote):
-* **Configuration:** Reads active palette from `~/.openooda/theme.oot`.
-* **Environment Overrides:** Respects `$OODA_THEME` and `$NO_COLOR`.
+When invoked with `--mcp`, `oogzip` runs a JSON-RPC 2.0 stdio server exposing 5 sovereign compression tools:
 
----
-
-## 4. Model Context Protocol (MCP)
-
-When invoked with `--mcp`, `oogzip` runs a JSON-RPC 2.0 stdio server providing structured tools for AI coding agents:
+| Tool | Description | Key Parameters |
+|---|---|---|
+| `gzip_compress` | Compress raw text into RFC 1952 gzip archive stream | `data` (string), `filename` (optional), `level` (1-9) |
+| `gzip_decompress` | Decompress RFC 1952 gzip archive stream, validating CRC-32 | `compressed` (string) |
+| `gzip_inspect` | Parse gzip archive header, ratio, timestamp, and trailer fields | `data` (string), `filename` (optional) |
+| `gzip_test` | Test gzip archive integrity without writing uncompressed output | `data` (string) |
+| `gzip_demo` | Run multi-scenario compression, dissection, and benchmark showcase | *(none)* |
 
 ```bash
-oogzip --mcp
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","name":"gzip_compress","data":"hello world"}' | oogzip --mcp
 ```
 
 ---
 
-## 5. Security & Zero Ambient Authority
+## 4. GNU/POSIX Parity & Compatibility
 
-* **Pure Capability Bounded:** Operates strictly with explicit tokens (&FsReadCap, &FsWriteCap, &McpCap). Physical absence of ambient disk/net leakage.
-* **Negative-Trust Architecture:** Strict input validation and operational limits.
-* **Hermetic Binary:** Standalone zero-dependency executable.
+* **100% Bitstream Compatibility:** Fully interoperable with standard GNU `gzip`, `gunzip`, and `zcat`. Archives generated by `oogzip` can be inspected and inflated by GNU utilities, and vice versa.
+* **Pure Capability Bounded:** Demands bounded capability tokens (`&FsReadCap`, `&FsWriteCap`, `&ProcessCap`, `&EnvCap`). Physical absence of ambient disk or network leakage.
+* **Hermetic Binary:** Standalone zero-dependency executable compiled via `oodac`.
 
 ---
 
-## 6. License
+## 5. License
 
 Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

@@ -1,0 +1,158 @@
+// # RFC 1952 Gzip Container Engine
+//
+// Logline: Packages and unpackages capability-bounded RFC 1952 gzip archive streams.
+//
+// Setup: Pure container serializer and deserializer validating headers, payloads, and trailers.
+//
+// Beats:
+//   1. Construct standard 10-byte RFC 1952 headers with optional FNAME metadata.
+//   2. Pack Deflate payloads with trailing 32-bit CRC and ISIZE verification blocks.
+//   3. Parse gzip container headers, skipping optional variable-length fields.
+//   4. Validate decompressed payload integrity against embedded CRC-32 and size trailers.
+
+import "crc32_engine.oo";
+import "deflate_stream.oo";
+
+pub fn compress_to_gzip(
+    data: String,
+    orig_name: String,
+    level: Int
+) -> List[Int] {
+    let mut out: List[Int] = bytes_new();
+
+    // 1. Header (10 bytes)
+    out = bytes_push(out, 31);   // ID1: 0x1f
+    out = bytes_push(out, 139);  // ID2: 0x8b
+    out = bytes_push(out, 8);    // CM: 8 (Deflate)
+
+    let has_fname: Bool = chars_len(orig_name) > 0;
+    let flg: Int = if has_fname { 8 } else { 0 };
+    out = bytes_push(out, flg);
+
+    // MTIME (4 bytes 0)
+    out = bytes_push(out, 0);
+    out = bytes_push(out, 0);
+    out = bytes_push(out, 0);
+    out = bytes_push(out, 0);
+
+    // XFL: 2 for max compression, 4 for fastest
+    let xfl: Int = if level >= 9 { 2 } else if level <= 1 { 4 } else { 0 };
+    out = bytes_push(out, xfl);
+
+    // OS: 3 (Unix)
+    out = bytes_push(out, 3);
+
+    // Optional FNAME zero-terminated string
+    if has_fname {
+        let name_len: Int = chars_len(orig_name);
+        let mut i: Int = 0;
+        while i < name_len {
+            out = bytes_push(out, byte_at(orig_name, i));
+            i = i + 1;
+        }
+        out = bytes_push(out, 0); // null terminator
+    }
+
+    // 2. Deflate payload
+    let comp_bytes: List[Int] = deflate_encode_stored(data);
+    let comp_len: Int = list_len(comp_bytes);
+    let mut ci: Int = 0;
+    while ci < comp_len {
+        out = bytes_push(out, list_get(comp_bytes, ci));
+        ci = ci + 1;
+    }
+
+    // 3. Trailer: CRC32 (4 bytes little-endian) and ISIZE (4 bytes little-endian)
+    let crc: Int = compute_crc32(data);
+    let crc_le: List[Int] = uint32_to_le_bytes(crc);
+    out = bytes_push(out, list_get(crc_le, 0));
+    out = bytes_push(out, list_get(crc_le, 1));
+    out = bytes_push(out, list_get(crc_le, 2));
+    out = bytes_push(out, list_get(crc_le, 3));
+
+    let isize: Int = bytes_len(data) & 4294967295;
+    let isize_le: List[Int] = uint32_to_le_bytes(isize);
+    out = bytes_push(out, list_get(isize_le, 0));
+    out = bytes_push(out, list_get(isize_le, 1));
+    out = bytes_push(out, list_get(isize_le, 2));
+    out = bytes_push(out, list_get(isize_le, 3));
+
+    return out;
+}
+
+pub fn decompress_gzip_container(raw: String) -> Result[String, String] {
+    let raw_len: Int = bytes_len(raw);
+    if raw_len < 18 {
+        return Err("Archive stream too short to contain valid RFC 1952 gzip payload (size < 18)");
+    }
+
+    let id1: Int = byte_at(raw, 0);
+    let id2: Int = byte_at(raw, 1);
+    if id1 != 31 || id2 != 139 {
+        return Err("Not in gzip format: invalid magic header bytes (" + id1.to_string() + ", " + id2.to_string() + ")");
+    }
+
+    let cm: Int = byte_at(raw, 2);
+    if cm != 8 {
+        return Err("Unsupported compression method in gzip header: " + cm.to_string() + " (only DEFLATE=8 supported)");
+    }
+
+    let flg: Int = byte_at(raw, 3);
+    let mut pos: Int = 10;
+
+    // FEXTRA
+    if (flg & 4) != 0 {
+        if pos + 2 > raw_len { return Err("Truncated FEXTRA field"); }
+        let xlen: Int = (byte_at(raw, pos) & 255) | ((byte_at(raw, pos + 1) & 255) << 8);
+        pos = pos + 2 + xlen;
+    }
+
+    // FNAME
+    if (flg & 8) != 0 {
+        while pos < raw_len && byte_at(raw, pos) != 0 {
+            pos = pos + 1;
+        }
+        pos = pos + 1; // skip null terminator
+    }
+
+    // FCOMMENT
+    if (flg & 16) != 0 {
+        while pos < raw_len && byte_at(raw, pos) != 0 {
+            pos = pos + 1;
+        }
+        pos = pos + 1; // skip null terminator
+    }
+
+    // FHCRC
+    if (flg & 2) != 0 {
+        pos = pos + 2;
+    }
+
+    if pos > raw_len - 8 {
+        return Err("Corrupt gzip header: header exceeds payload boundaries");
+    }
+
+    let payload_len: Int = (raw_len - 8) - pos;
+    let def_res: Result[String, String] = deflate_decode_stream(raw, pos, payload_len);
+    if def_res.is_err() {
+        return def_res;
+    }
+
+    let uncompressed: String = match def_res { Ok(s) => s, Err(_) => "" };
+
+    // Validate trailer
+    let expected_crc: Int = read_le32_from_str(raw, raw_len - 8);
+    let expected_isize: Int = read_le32_from_str(raw, raw_len - 4);
+
+    let actual_crc: Int = compute_crc32(uncompressed);
+    if actual_crc != expected_crc {
+        return Err("CRC32 mismatch in gzip stream: computed 0x" + crc32_to_hex_str(actual_crc) + ", expected 0x" + crc32_to_hex_str(expected_crc));
+    }
+
+    let actual_isize: Int = bytes_len(uncompressed) & 4294967295;
+    if actual_isize != expected_isize {
+        return Err("ISIZE mismatch in gzip stream: uncompressed length " + actual_isize.to_string() + " != trailer " + expected_isize.to_string());
+    }
+
+    return Ok(uncompressed);
+}

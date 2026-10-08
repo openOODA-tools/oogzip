@@ -1,0 +1,69 @@
+// # IEEE 802.3 CRC-32 Checksum Engine
+//
+// Logline: Computes 32-bit cyclic redundancy check values for RFC 1952 gzip stream validation.
+//
+// Setup: Pure algorithmic calculation using polynomial 0xEDB88320 without external libraries.
+//
+// Beats:
+//   1. Execute tableless bitwise CRC-32 calculation for exact IEEE 802.3 compliance.
+//   2. Format 32-bit checksum values as lowercase 8-digit hexadecimal strings.
+//   3. Pack 32-bit integers into little-endian byte streams for gzip trailers.
+//   4. Unpack 4-byte little-endian trailer values into unsigned 32-bit integers.
+
+pub fn compute_crc32(data: String) -> Int {
+    let poly: Int = 3988292384; // 0xEDB88320
+    let mut crc: Int = 4294967295; // 0xFFFFFFFF
+    let n: Int = bytes_len(data);
+    let mut i: Int = 0;
+
+    while i < n {
+        let b: Int = byte_at(data, i);
+        crc = crc ^ b;
+        let mut bit: Int = 0;
+        while bit < 8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ poly;
+            } else {
+                crc = crc >> 1;
+            }
+            bit = bit + 1;
+        }
+        i = i + 1;
+    }
+
+    return (crc ^ 4294967295) & 4294967295;
+}
+
+pub fn crc32_to_hex_str(val: Int) -> String {
+    let digits: String = "0123456789abcdef";
+    let mut out: String = "";
+    let mut k: Int = 7;
+    while k >= 0 {
+        let shift: Int = k * 4;
+        let nibble: Int = (val >> shift) & 15;
+        out = out + char_at(digits, nibble);
+        k = k - 1;
+    }
+    return out;
+}
+
+pub fn uint32_to_le_bytes(val: Int) -> List[Int] {
+    let mut b: List[Int] = bytes_new();
+    b = bytes_push(b, val & 255);
+    b = bytes_push(b, (val >> 8) & 255);
+    b = bytes_push(b, (val >> 16) & 255);
+    b = bytes_push(b, (val >> 24) & 255);
+    return b;
+}
+
+pub fn read_le32_from_str(data: String, offset: Int) -> Int {
+    if offset + 4 > bytes_len(data) {
+        return 0;
+    }
+    let b0: Int = byte_at(data, offset);
+    let b1: Int = byte_at(data, offset + 1);
+    let b2: Int = byte_at(data, offset + 2);
+    let b3: Int = byte_at(data, offset + 3);
+
+    return (b0 & 255) | ((b1 & 255) << 8) | ((b2 & 255) << 16) | ((b3 & 255) << 24);
+}

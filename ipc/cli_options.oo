@@ -1,0 +1,123 @@
+// # Command-Line Options Parser
+//
+// Logline: Decodes POSIX gzip command-line flags, compression parameters, and targets.
+//
+// Setup: Pure argument tokenizer supporting compression, decompression, inspection, and MCP modes.
+//
+// Beats:
+//   1. Declare structured CliOptions configuration type.
+//   2. Format standard GNU/POSIX help and version strings.
+//   3. Parse compression flags, levels, inspection modes, and display controls.
+//   4. Collect target file paths into structured arguments list.
+
+import "core/gzip_types.oo";
+
+pub type CliOptions = struct {
+    show_help: Bool,
+    show_version: Bool,
+    show_mcp: Bool,
+    show_demo: Bool,
+    run_test: Bool,
+    json_output: Bool,
+    use_color: Bool,
+    compress_opts: GzipCompressOptions,
+    files: List[String]
+};
+
+pub fn render_cli_help() -> String {
+    return "oogzip 0.2.0 (openOODA sovereign DEFLATE compression engine)\n"
+        + "usage: oogzip [options] [FILE]...\n\n"
+        + "Compress or decompress files and streams in RFC 1952 gzip format.\n\n"
+        + "Options:\n"
+        + "  -c, --stdout       write on standard output, keep original files unchanged\n"
+        + "  -d, --decompress   decompress archive files\n"
+        + "  -k, --keep         keep (don't delete) input files during operation\n"
+        + "  -f, --force        force overwrite of output files\n"
+        + "  -t, --test         test compressed archive integrity and verify CRC-32\n"
+        + "  -l, --list         list compressed and uncompressed sizes and ratio\n"
+        + "  -1, --fast         compress faster (level 1)\n"
+        + "  -9, --best         compress better (level 9)\n"
+        + "  -j, --json         output archive metadata and metrics as JSON\n"
+        + "  -D, --demo         interactive compression and container dissection showcase\n"
+        + "      --no-color     suppress ANSI color escape sequences\n"
+        + "      --test         execute internal multi-tier verification suite\n"
+        + "      --mcp          run as Model Context Protocol stdio server\n"
+        + "  -h, --help         display this help and exit\n"
+        + "  -v, --version      output version information and exit\n";
+}
+
+pub fn render_cli_version() -> String {
+    return "oogzip 0.2.0 (openOODA sovereign userland)\n";
+}
+
+pub fn parse_cli_options(args: List[String]) -> CliOptions {
+    let mut help_flag: Bool = false;
+    let mut ver_flag: Bool = false;
+    let mut mcp_flag: Bool = false;
+    let mut demo_flag: Bool = false;
+    let mut test_flag: Bool = false;
+    let mut json_flag: Bool = false;
+    let mut color_flag: Bool = true;
+
+    let mut copts: GzipCompressOptions = default_compress_options();
+    let mut target_files: List[String] = list_new();
+
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < n {
+        let arg: String = list_get(args, i);
+
+        if arg == "-h" || arg == "--help" {
+            help_flag = true;
+        } else if arg == "-v" || arg == "--version" {
+            ver_flag = true;
+        } else if arg == "--mcp" {
+            mcp_flag = true;
+        } else if arg == "-D" || arg == "--demo" {
+            demo_flag = true;
+        } else if arg == "--test" {
+            test_flag = true;
+        } else if arg == "-j" || arg == "--json" {
+            json_flag = true;
+        } else if arg == "--no-color" {
+            color_flag = false;
+        } else if arg == "-c" || arg == "--stdout" {
+            copts.to_stdout = true;
+        } else if arg == "-d" || arg == "--decompress" || arg == "--uncompress" {
+            copts.decompress = true;
+        } else if arg == "-k" || arg == "--keep" {
+            copts.keep_file = true;
+        } else if arg == "-f" || arg == "--force" {
+            copts.force_overwrite = true;
+        } else if arg == "-t" {
+            copts.test_only = true;
+        } else if arg == "-l" || arg == "--list" {
+            copts.list_only = true;
+        } else if arg == "-1" || arg == "--fast" {
+            copts.level = 1;
+        } else if arg == "-9" || arg == "--best" {
+            copts.level = 9;
+        } else if str_starts_with(arg, "-") && chars_len(arg) == 2 {
+            let digit_b: Int = byte_at(arg, 1);
+            if digit_b >= 49 && digit_b <= 57 { // '1'..'9'
+                copts.level = digit_b - 48;
+            }
+        } else if !str_starts_with(arg, "-") {
+            target_files = list_push(target_files, arg);
+        }
+        i = i + 1;
+    }
+
+    return CliOptions {
+        show_help: help_flag,
+        show_version: ver_flag,
+        show_mcp: mcp_flag,
+        show_demo: demo_flag,
+        run_test: test_flag,
+        json_output: json_flag,
+        use_color: color_flag,
+        compress_opts: copts,
+        files: target_files
+    };
+}

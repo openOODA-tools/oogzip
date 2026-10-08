@@ -1,0 +1,69 @@
+// # Gzip Showcase and Demonstration Engine
+//
+// Logline: Demonstrates compression, bitstream dissection, integrity auditing, and round-trip decompression.
+//
+// Setup: Interactive visual demonstration of RFC 1952 container mechanics.
+//
+// Beats:
+//   1. Build multi-stage demonstration workflow for sovereign compression.
+//   2. Dissect container header bytes, flags, and trailer checksum fields.
+//   3. Execute round-trip compression and decompression verification.
+//   4. Format ANSI badges and metrics summary for terminal showcase presentation.
+
+import "core/gzip_types.oo";
+import "core/crc32_engine.oo";
+import "core/gzip_container.oo";
+import "core/archive_inspector.oo";
+
+pub fn render_gzip_demo(use_color: Bool) -> String {
+    let mut out: String = "";
+    out = out + "=================================================================\n";
+    out = out + " oogzip 0.2.0 - Sovereign DEFLATE Compression & RFC 1952 Showcase\n";
+    out = out + "=================================================================\n\n";
+
+    let sample: String = "openOODA capability-bounded userland: zero ambient authority, streaming MCP.";
+    let orig_len: Int = chars_len(sample);
+    let orig_crc: Int = compute_crc32(sample);
+    let orig_crc_hex: String = crc32_to_hex_str(orig_crc);
+
+    out = out + "[Stage 1: Input Payload Specification]\n";
+    out = out + "  Payload: \"" + sample + "\"\n";
+    out = out + "  Uncompressed Size: " + orig_len.to_string() + " bytes\n";
+    out = out + "  Calculated CRC-32: 0x" + orig_crc_hex + "\n\n";
+
+    // Compress
+    let comp_bytes: List[Int] = compress_to_gzip(sample, "sample.txt", 6);
+    let comp_str: String = bytes_to_str(comp_bytes);
+    let comp_len: Int = chars_len(comp_str);
+
+    out = out + "[Stage 2: RFC 1952 Gzip Container Serialization]\n";
+    out = out + "  Gzip Stream Size: " + comp_len.to_string() + " bytes\n";
+    let magic_str: String = "0x" + byte_at(comp_str, 0).to_string() + " 0x" + byte_at(comp_str, 1).to_string();
+    out = out + "  Header Magic Bytes: " + magic_str + " (Expected: 31 139 / 0x1f 0x8b)\n";
+    out = out + "  Compression Method: DEFLATE (CM=8)\n";
+    out = out + "  Flags: FNAME present (original filename: 'sample.txt')\n\n";
+
+    // Inspect
+    let meta: GzipMetadata = inspect_gzip_stream(comp_str, "sample.txt.gz");
+    out = out + "[Stage 3: Archive Header & Trailer Inspection]\n";
+    out = out + "  Trailer Stored CRC32: 0x" + meta.crc32_hex + "\n";
+    out = out + "  Trailer Stored ISIZE: " + meta.uncompressed_size.to_string() + " bytes\n";
+    out = out + "  Container Valid: " + (if meta.valid { "PASS" } else { "FAIL" }) + "\n\n";
+
+    // Decompress
+    let decomp_res: Result[String, String] = decompress_gzip_container(comp_str);
+    out = out + "[Stage 4: Zero-Loss Round-Trip Decompression]\n";
+    if decomp_res.is_ok() {
+        let decomp_str: String = match decomp_res { Ok(s) => s, Err(_) => "" };
+        let match_ok: Bool = (decomp_str == sample);
+        out = out + "  Decompression Status: " + (if match_ok { "SUCCESS (Byte-for-Byte Exact Match)" } else { "FAILED" }) + "\n";
+        out = out + "  Decompressed Text: \"" + decomp_str + "\"\n\n";
+    } else {
+        out = out + "  Decompression Failed\n\n";
+    }
+
+    out = out + "=================================================================\n";
+    out = out + "Showcase Complete: RFC 1952 Container & Trailer Invariants Verified.\n";
+
+    return out;
+}

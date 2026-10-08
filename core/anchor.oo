@@ -1,0 +1,51 @@
+// # Core Subsystem Anchor
+//
+// Logline: Consolidates and verifies gzip types, CRC32 engine, container serializer, and inspector.
+//
+// Setup: Pure anchor module validating core compression invariants and round-trip fidelity.
+//
+// Beats:
+//   1. Re-export gzip data models and compression options.
+//   2. Re-export CRC-32 calculation and byte-packing utilities.
+//   3. Re-export Deflate block encoders and RFC 1952 container packaging.
+//   4. Validate compression and decompression roundtrip integrity through self-test.
+
+import "gzip_types.oo";
+import "crc32_engine.oo";
+import "deflate_stream.oo";
+import "gzip_container.oo";
+import "archive_inspector.oo";
+
+pub fn verify_core_subsystem() -> Bool {
+    // 1. Verify CRC32 standard test vector: "123456789" -> 0xcbf43926 (3421780262)
+    let c: Int = compute_crc32("123456789");
+    if c != 3421780262 {
+        return false;
+    }
+    let h: String = crc32_to_hex_str(c);
+    if h != "cbf43926" {
+        return false;
+    }
+
+    // 2. Verify compression and decompression round-trip
+    let original: String = "openOODA sovereign capability-bounded DEFLATE compression engine";
+    let comp_bytes: List[Int] = compress_to_gzip(original, "test.txt", 6);
+    let comp_str: String = bytes_to_str(comp_bytes);
+
+    let decomp_res: Result[String, String] = decompress_gzip_container(comp_str);
+    if decomp_res.is_err() {
+        return false;
+    }
+    let decompressed: String = match decomp_res { Ok(s) => s, Err(_) => "" };
+    if decompressed != original {
+        return false;
+    }
+
+    // 3. Verify archive inspector on compressed stream
+    let meta: GzipMetadata = inspect_gzip_stream(comp_str, "test.txt.gz");
+    if !meta.valid || meta.uncompressed_size != bytes_len(original) {
+        return false;
+    }
+
+    return true;
+}

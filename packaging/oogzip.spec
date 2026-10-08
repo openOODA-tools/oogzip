@@ -1,5 +1,5 @@
 Name:           oogzip
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        High-speed multi-threaded DEFLATE compression engine with stream headers.
 License:        ASL 2.0

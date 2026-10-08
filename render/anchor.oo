@@ -1,0 +1,54 @@
+// # Render Subsystem Anchor
+//
+// Logline: Consolidates and verifies terminal formatters, JSON serializers, and demonstration showcase.
+//
+// Setup: Pure anchor module validating visual report presentation and JSON encoding.
+//
+// Beats:
+//   1. Re-export terminal archive listing formatters and test reporting.
+//   2. Re-export RFC 8259 JSON serialization routines.
+//   3. Re-export interactive demonstration showcase.
+//   4. Validate rendering invariants through self-test.
+
+import "core/gzip_types.oo";
+import "render_table.oo";
+import "render_json.oo";
+import "render_demo.oo";
+
+pub fn verify_render_subsystem() -> Bool {
+    let dummy_meta: GzipMetadata = make_gzip_metadata(
+        "sample.txt.gz",
+        "sample.txt",
+        120,
+        250,
+        52,
+        "cbf43926",
+        0,
+        true,
+        ""
+    );
+
+    let row: String = render_archive_row(dummy_meta, false);
+    if chars_len(row) == 0 {
+        return false;
+    }
+
+    let mut list: List[GzipMetadata] = list_new();
+    list = list_push(list, dummy_meta);
+    let tbl: String = render_archive_table(list, false);
+    if chars_len(tbl) == 0 {
+        return false;
+    }
+
+    let j: String = metadata_to_json(dummy_meta);
+    if chars_len(j) == 0 {
+        return false;
+    }
+
+    let demo: String = render_gzip_demo(false);
+    if chars_len(demo) == 0 {
+        return false;
+    }
+
+    return true;
+}
